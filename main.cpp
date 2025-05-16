@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <imgui.h>
 
-const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_01_01";
+const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_00";
 
 struct Matrix4x4 {
 	float m[4][4];
@@ -24,6 +24,21 @@ struct Sphere {
 
 	// 半径
 	float radius;
+};
+
+struct Line {
+	Vector3 origin;
+	Vector3 diff;
+};
+
+struct Ray {
+	Vector3 origin;
+	Vector3 direction;
+};
+
+struct Segment {
+	Vector3 origin;
+	Vector3 diff;
 };
 
 // 行列の加算
@@ -378,6 +393,51 @@ void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, con
 	}
 }
 
+// ベクトルの加算
+Vector3 VectorAdd(const Vector3& v1, const Vector3& v2) {
+
+	Vector3 result = {};
+
+	result.x = v1.x + v2.x;
+	result.y = v1.y + v2.y;
+	result.z = v1.z + v2.z;
+
+	return result;
+};
+
+
+// ベクトルの減算
+Vector3 VectorSubtract(const Vector3& v1, const Vector3& v2) {
+
+	Vector3 result = {};
+
+	result.x = v1.x - v2.x;
+	result.y = v1.y - v2.y;
+	result.z = v1.z - v2.z;
+
+	return result;
+};
+
+Vector3 Project(const Vector3& v1, const Vector3& v2) {
+	Vector3 result = {};
+	result.x = v1.x * v2.x;
+	result.y = v1.y * v2.y;
+	result.z = v1.z * v2.z;
+	return result;
+}
+
+Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
+	Vector3 result = {};
+	Vector3 segmentVector = { segment.diff.x, segment.diff.y, segment.diff.z };
+	Vector3 pointVector = { point.x - segment.origin.x, point.y - segment.origin.y, point.z - segment.origin.z };
+	float t = (segmentVector.x * pointVector.x + segmentVector.y * pointVector.y + segmentVector.z * pointVector.z) /
+		(segmentVector.x * segmentVector.x + segmentVector.y * segmentVector.y + segmentVector.z * segmentVector.z);
+	result.x = t * segmentVector.x + segment.origin.x;
+	result.y = t * segmentVector.y + segment.origin.y;
+	result.z = t * segmentVector.z + segment.origin.z;
+	return result;
+}
+
 //
 static const int kColumnWidth = 60;
 
@@ -420,10 +480,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	char keys[256] = { 0 };
 	char preKeys[256] = { 0 };
 
+	///==========================================================================-
+	// カメラの位置は課題が変わってもいじらない
+	///==========================================================================-
+#pragma region
+	// カメラの位置
 	Vector3 cameraTranslate = { 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate = { 0.26f, 0.0f, 0.0f };
 	Vector3 SphereCenter = { 0.0f, 0.0f, 0.0f };
-	float SphereRadius = 1.0f;
+#pragma endregion
+
+	Segment segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
+	Vector3 point = { -1.5f, 0.6f, 0.6f };
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -449,19 +517,26 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
+		Vector3 project = Project(VectorSubtract(point, segment.origin), segment.diff);
+		Vector3 clossPoint = ClossPoint(point, segment);
+
+		Sphere sphere = { point,0.01f };
+		Sphere clossPointSphere = { clossPoint,0.01f };
+
+		Vector3 start = Transform(viewportMatrix, Transform(viewProjectionMatrix, segment.origin));
+		Vector3 end = Transform(viewportMatrix, Transform(viewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
+
 		// リセット
 		if (keys[DIK_R]) {
-			cameraTranslate = { 0.0f, 1.9f, -6.49f };
-			cameraRotate = { 0.26f, 0.0f, 0.0f };
-			SphereCenter = { 0.0f, 0.0f, 0.0f };
-			SphereRadius = 1.0f;
+			point = { -1.5f, 0.6f, 0.6f };
+			segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
 		}
 
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
-		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
-		ImGui::DragFloat3("SphereCenter", &SphereCenter.x, 0.01f);
-		ImGui::DragFloat("SphereRadius", &SphereRadius, 0.01f);
+		ImGui::DragFloat3("point", &point.x, 0.01f);
+		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
+		ImGui::InputFloat3("Project", &project.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
 		///
@@ -472,11 +547,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓描画処理ここから
 		///
 
-		// 描画
+		// Grid線の描画
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		Sphere sphere = { SphereCenter , SphereRadius };
 		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, BLACK);
+		DrawSphere(clossPointSphere, viewProjectionMatrix, viewportMatrix, RED);
+
+		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), WHITE);
 
 		///
 		/// ↑描画処理ここまで
