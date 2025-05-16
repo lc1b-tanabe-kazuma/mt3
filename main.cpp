@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <imgui.h>
 
-const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_00";
+const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_01";
 
 struct Matrix4x4 {
 	float m[4][4];
@@ -24,6 +24,9 @@ struct Sphere {
 
 	// 半径
 	float radius;
+
+	// 色
+	int color;
 };
 
 struct Line {
@@ -39,6 +42,16 @@ struct Ray {
 struct Segment {
 	Vector3 origin;
 	Vector3 diff;
+};
+
+// 長さ
+float Length(const Vector3& v) {
+
+	float result = {};
+
+	result = sqrtf((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+
+	return result;
 };
 
 // 行列の加算
@@ -315,7 +328,10 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 		Vector3 bScreen = Transform(viewProjectionMatrix, b);
 		aScreen = Transform(viewportMatrix, aScreen);
 		bScreen = Transform(viewportMatrix, bScreen);
-		Novice::DrawLine(int(aScreen.x), int(aScreen.y), int(bScreen.x), int(bScreen.y), 0xAAAAAAFF);
+
+		// 中央線（x == 0）のみ黒、それ以外はグレー
+		uint32_t color = (std::abs(x) < 0.0001f) ? 0x000000FF : 0xAAAAAAFF;
+		Novice::DrawLine(int(aScreen.x), int(aScreen.y), int(bScreen.x), int(bScreen.y), color);
 	}
 
 	for (uint32_t zIndex = 0; zIndex <= kSubdvision; ++zIndex) {
@@ -326,7 +342,10 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 		Vector3 bScreen = Transform(viewProjectionMatrix, b);
 		aScreen = Transform(viewportMatrix, aScreen);
 		bScreen = Transform(viewportMatrix, bScreen);
-		Novice::DrawLine(int(aScreen.x), int(aScreen.y), int(bScreen.x), int(bScreen.y), 0xAAAAAAFF);
+
+		// 中央線（z == 0）のみ黒、それ以外はグレー
+		uint32_t color = (std::abs(z) < 0.0001f) ? 0x000000FF : 0xAAAAAAFF;
+		Novice::DrawLine(int(aScreen.x), int(aScreen.y), int(bScreen.x), int(bScreen.y), color);
 	}
 }
 
@@ -405,7 +424,6 @@ Vector3 VectorAdd(const Vector3& v1, const Vector3& v2) {
 	return result;
 };
 
-
 // ベクトルの減算
 Vector3 VectorSubtract(const Vector3& v1, const Vector3& v2) {
 
@@ -436,6 +454,25 @@ Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
 	result.y = t * segmentVector.y + segment.origin.y;
 	result.z = t * segmentVector.z + segment.origin.z;
 	return result;
+}
+
+// 球と球の衝突判定
+bool Iscollision(Sphere& s1, Sphere& s2) {
+	float distance = Length(VectorSubtract(s1.center, s2.center));
+	uint32_t CollisionColor = WHITE;
+
+	// 衝突している場合
+	if (distance <= (s1.radius + s2.radius)) {
+
+		// 色を赤にする
+		CollisionColor = RED;
+		s1.color = CollisionColor;
+	} else {
+		CollisionColor = WHITE;
+		s1.color = CollisionColor;
+	}
+
+	return s1.color;
 }
 
 //
@@ -490,8 +527,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 SphereCenter = { 0.0f, 0.0f, 0.0f };
 #pragma endregion
 
-	Segment segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
-	Vector3 point = { -1.5f, 0.6f, 0.6f };
+	// 球体の初期化
+	Sphere sphere[2] = {};
+	sphere[0].center = { 0.0f, 0.0f, 0.0f };
+	sphere[0].radius = 0.6f;
+	sphere[0].color = WHITE;
+	sphere[1].center = { 0.8f, 0.0f, 1.0f };
+	sphere[1].radius = 0.5f;
+	sphere[1].color = WHITE;
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -517,26 +560,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		Vector3 project = Project(VectorSubtract(point, segment.origin), segment.diff);
-		Vector3 clossPoint = ClossPoint(point, segment);
-
-		Sphere sphere = { point,0.01f };
-		Sphere clossPointSphere = { clossPoint,0.01f };
-
-		Vector3 start = Transform(viewportMatrix, Transform(viewProjectionMatrix, segment.origin));
-		Vector3 end = Transform(viewportMatrix, Transform(viewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
-
 		// リセット
 		if (keys[DIK_R]) {
-			point = { -1.5f, 0.6f, 0.6f };
-			segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
+			cameraTranslate = { 0.0f, 1.9f, -6.49f };
+			cameraRotate = { 0.26f, 0.0f, 0.0f };
+			SphereCenter = { 0.0f, 0.0f, 0.0f };
+			sphere[0].center = { 0.0f, 0.0f, 0.0f };
+			sphere[1].center = { 0.8f, 0.0f, 1.0f };
+			sphere[0].radius = 0.6f;
+			sphere[1].radius = 0.5f;
 		}
 
+		// 衝突判定
+		Iscollision(sphere[0], sphere[1]);
+
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("point", &point.x, 0.01f);
-		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
-		ImGui::InputFloat3("Project", &project.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
+		ImGui::DragFloat3("SphereCenter[0]", &sphere[0].center.x, 0.01f);
+		ImGui::DragFloat("SphereRadius[0]", &sphere[0].radius, 0.01f);
+		ImGui::DragFloat3("SphereCenter[1]", &sphere[1].center.x, 0.01f);
+		ImGui::DragFloat("SphereRadius[1]", &sphere[1].radius, 0.01f);
+		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
+		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
 		ImGui::End();
 
 		///
@@ -550,10 +594,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, BLACK);
-		DrawSphere(clossPointSphere, viewProjectionMatrix, viewportMatrix, RED);
-
-		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), WHITE);
+		// 球体の描画
+		DrawSphere(sphere[0], viewProjectionMatrix, viewportMatrix, sphere[0].color);
+		DrawSphere(sphere[1], viewProjectionMatrix, viewportMatrix, sphere[1].color);
 
 		///
 		/// ↑描画処理ここまで
