@@ -4,6 +4,8 @@
 #include <cmath>
 #include <assert.h>
 #include <imgui.h>
+#include <iostream>
+#include <algorithm>
 
 const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_01";
 
@@ -475,31 +477,26 @@ float Dot(const Vector3& v1, const Vector3& v2) {
 	return result;
 };
 
-Matrix4x4 MakeLookAtMatrix(const Vector3& eye, const Vector3& target, const Vector3& up) {
-	Vector3 zaxis = Normalize(VectorSubtract(target, eye)); // forward
-	Vector3 xaxis = Normalize(Cross(up, zaxis));      // right
-	Vector3 yaxis = Cross(zaxis, xaxis);              // up
+Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
+	Vector3 zAxis = Normalize(VectorSubtract(target, eye));
+	Vector3 xAxis = Normalize(Cross(up, zAxis));
+	Vector3 yAxis = Cross(zAxis, xAxis);
 
-	Matrix4x4 view = MakeIndetity4x4();
-
-	view.m[0][0] = xaxis.x;
-	view.m[1][0] = xaxis.y;
-	view.m[2][0] = xaxis.z;
-
-	view.m[0][1] = yaxis.x;
-	view.m[1][1] = yaxis.y;
-	view.m[2][1] = yaxis.z;
-
-	view.m[0][2] = -zaxis.x;
-	view.m[1][2] = -zaxis.y;
-	view.m[2][2] = -zaxis.z;
-
-	view.m[3][0] = -Dot(xaxis, eye);
-	view.m[3][1] = -Dot(yaxis, eye);
-	view.m[3][2] = Dot(zaxis, eye);
-	view.m[3][3] = 1.0f;
-
-	return view;
+	Matrix4x4 result = {};
+	result.m[0][0] = xAxis.x;
+	result.m[1][0] = xAxis.y;
+	result.m[2][0] = xAxis.z;
+	result.m[0][1] = yAxis.x;
+	result.m[1][1] = yAxis.y;
+	result.m[2][1] = yAxis.z;
+	result.m[0][2] = zAxis.x;
+	result.m[1][2] = zAxis.y;
+	result.m[2][2] = zAxis.z;
+	result.m[3][0] = -Dot(xAxis, eye);
+	result.m[3][1] = -Dot(yAxis, eye);
+	result.m[3][2] = -Dot(zAxis, eye);
+	result.m[3][3] = 1.0f;
+	return result;
 }
 
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
@@ -638,6 +635,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate = { 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate = { 0.26f, 0.0f, 0.0f };
 	Vector3 SphereCenter = { 0.0f, 0.0f, 0.0f };
+	float cameraFovY = 0.45f;
+	Vector3 target = { 0.0f, 0.0f, 0.0f };
+	Vector3 up = { 0.0f, 1.0f, 0.0f };
 #pragma endregion
 
 	// 球体の初期化
@@ -665,13 +665,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		// ビュー行列
-		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1, 1, 1 }, cameraRotate, cameraTranslate);
+		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1,1,1 }, cameraRotate, cameraTranslate);
 		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
-
-		// プロジェクション
-		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
-		Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
+		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(cameraFovY, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
+		Matrix4x4 viewProjection = Multiply(viewMatrix, projectionMatrix);
 
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
@@ -690,14 +687,42 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// 衝突判定
 		StoPIscollision(sphere[0], plane);
 
+
+		// ImGuiの初期化
 		ImGui::Begin("Window");
 		ImGui::DragFloat3("SphereCenter", &sphere[0].center.x, 0.01f);
 		ImGui::DragFloat("SphereRadius", &sphere[0].radius, 0.01f);
 		ImGui::DragFloat3("PlaneNormal", &plane.normal.x, 0.01f);
 		plane.normal = Normalize(plane.normal);
+
+		// マウス操作
 		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
-		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
-		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
+		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
+		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
+		ImGui::DragFloat("Roll", &cameraRotate.z, 0.01f);
+		
+		// マウス操作
+		float sensitivity = 0.0025f; // 感度をここで調整
+		ImGuiIO& io = ImGui::GetIO();
+
+		if (ImGui::IsMouseDown(1)) { // 右ドラッグで回転
+			cameraRotate.y += io.MouseDelta.x * sensitivity;  // Yaw
+			cameraRotate.x += io.MouseDelta.y * sensitivity;  // Pitch
+		}
+
+		if (ImGui::IsMouseDown(2)) { // 中ドラッグでパン（平行移動）
+			Vector3 right = { std::cos(cameraRotate.y), 0, -std::sin(cameraRotate.y) };
+			up = { 0, 1, 0 };
+			cameraTranslate.x -= io.MouseDelta.x * 0.01f * right.x;
+			cameraTranslate.z -= io.MouseDelta.x * 0.01f * right.z;
+			cameraTranslate.x += io.MouseDelta.y * 0.01f * up.x;
+			cameraTranslate.y += io.MouseDelta.y * 0.01f * up.y;
+			cameraTranslate.z += io.MouseDelta.y * 0.01f * up.z;
+		}
+
+		// ホイールでズーム（FOV）
+		cameraFovY -= io.MouseWheel * 0.05f;
+		cameraFovY = std::clamp(cameraFovY, 0.1f, 1.5f);
 		ImGui::End();
 
 		///
@@ -709,13 +734,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// Grid線の描画
-		DrawGrid(viewProjectionMatrix, viewportMatrix);
+		DrawGrid(viewProjection, viewportMatrix);
 
 		// 球体の描画
-		DrawSphere(sphere[0], viewProjectionMatrix, viewportMatrix, sphere[0].color);
+		DrawSphere(sphere[0], viewProjection, viewportMatrix, sphere[0].color);
 
 		// 平面の描画
-		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, plane.color);
+		DrawPlane(plane, viewProjection, viewportMatrix, plane.color);
 
 		///
 		/// ↑描画処理ここまで
