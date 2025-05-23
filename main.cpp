@@ -638,6 +638,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float cameraFovY = 0.45f;
 	Vector3 target = { 0.0f, 0.0f, 0.0f };
 	Vector3 up = { 0.0f, 1.0f, 0.0f };
+
+	// 極座標からカメラ位置を計算（cameraRotate.x = Pitch, cameraRotate.y = Yaw）
+	Vector3 cameraPosition;
+	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
 	// 球体の初期化
@@ -665,10 +669,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1,1,1 }, cameraRotate, cameraTranslate);
-		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
-		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(cameraFovY, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
-		Matrix4x4 viewProjection = Multiply(viewMatrix, projectionMatrix);
+		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
+		cameraPosition.y = radius * std::sinf(cameraRotate.x);
+		cameraPosition.z = radius * std::cosf(cameraRotate.x) * std::cosf(cameraRotate.y);
+
+		// ビュー行列（LookAt式）
+		Matrix4x4 cameraViewMatrix = MakeLookAtMatrix(cameraPosition, target, up);
+
+		// 射影行列（透視投影）
+		Matrix4x4 cameraProjectionMatrix = MakePerspectiveFovMatrix(
+			cameraFovY,
+			float(kWindowWidth) / float(kWindowHeight),
+			0.1f,
+			100.0f
+		);
+
+		// ビュー×プロジェクション行列
+		Matrix4x4 cameraViewProjectionMatrix = Multiply(cameraViewMatrix, cameraProjectionMatrix);
 
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
@@ -699,7 +716,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
 		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
-		ImGui::DragFloat("Roll", &cameraRotate.z, 0.01f);
 		
 		// マウス操作
 		float sensitivity = 0.0025f; // 感度をここで調整
@@ -734,13 +750,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// Grid線の描画
-		DrawGrid(viewProjection, viewportMatrix);
+		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
 		// 球体の描画
-		DrawSphere(sphere[0], viewProjection, viewportMatrix, sphere[0].color);
+		DrawSphere(sphere[0], cameraViewProjectionMatrix, viewportMatrix, sphere[0].color);
 
 		// 平面の描画
-		DrawPlane(plane, viewProjection, viewportMatrix, plane.color);
+		DrawPlane(plane, cameraViewProjectionMatrix, viewportMatrix, plane.color);
 
 		///
 		/// ↑描画処理ここまで
