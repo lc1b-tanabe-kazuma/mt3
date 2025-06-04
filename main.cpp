@@ -41,15 +41,17 @@ struct Ray {
 	Vector3 direction;
 };
 
-struct Segment {
-	Vector3 origin;
-	Vector3 diff;
-};
-
 struct Plane {
 	Vector3 normal; // 法線ベクトル
 	float distance; // 原点からの距離
 	uint32_t color;// 色
+};
+
+// 線
+struct Segment {
+	Vector3 origin; // 始点
+	Vector3 diff; // 終点
+	uint32_t color;
 };
 
 // 長さ
@@ -555,6 +557,28 @@ bool StoPIscollision(Sphere& sphere, Plane& plane) {
 	return sphere.color;
 }
 
+// 線分と平面の衝突判定
+bool IsCollision(Segment& segment, Plane& plane) {
+
+	// 垂直判定を行なう為に、法線と線の内積を求める
+	float dot = Dot(plane.normal, segment.diff);
+
+	// 垂直=平行であるので衝突していない
+	if (dot == 0.0f) {
+		return false;
+	}
+
+	// tを求める
+	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
+
+	// tが線分の範囲内にあれば衝突している
+	if (t >= 0.0f && t <= 1.0f) {
+		return true;
+	}
+
+	return false;
+}
+
 Vector3 Perpendicular(const Vector3& vector) {
 	if (vector.x != 0.0f || vector.y != 0.0f) {
 		return { -vector.y, vector.x, 0.0f };
@@ -644,11 +668,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
-	// 球体の初期化
-	Sphere sphere[2] = {};
-	sphere[0].center = { 0.0f, 0.0f, 0.0f };
-	sphere[0].radius = 0.6f;
-	sphere[0].color = WHITE;
+	Segment segment;
+	segment.origin = { 0.0f, 0.0f, 0.0f };
+	segment.diff = { 1.0f, 1.0f, 1.0f };
+	segment.color = WHITE;
 
 	// 平面の初期化
 	Plane plane = {};
@@ -668,6 +691,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 		/// ↓更新処理ここから
 		///
+
+		// 衝突判定
+		bool isHit = IsCollision(segment, plane);
+
+		if (isHit) {
+			segment.color = RED;
+		} else {
+			segment.color = WHITE;
+		}
 
 		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
 		cameraPosition.y = radius * std::sinf(cameraRotate.x);
@@ -690,6 +722,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
+		Vector3 start = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, segment.origin));
+
+		Vector3 end = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
+
 		// リセット
 		if (keys[DIK_R]) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
@@ -697,26 +733,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
 			plane.normal = { 0.0f, 1.0f, 0.0f };
 			plane.distance = 1.0f;
-			sphere[0].center = { 0.0f, 0.0f, 0.0f };
-			sphere[0].radius = 0.6f;
+			segment = { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } };
 		}
-
-		// 衝突判定
-		StoPIscollision(sphere[0], plane);
-
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("SphereCenter", &sphere[0].center.x, 0.01f);
-		ImGui::DragFloat("SphereRadius", &sphere[0].radius, 0.01f);
+		ImGui::DragFloat3("SphereCenter", &SphereCenter.x, 0.01f);
 		ImGui::DragFloat3("PlaneNormal", &plane.normal.x, 0.01f);
 		plane.normal = Normalize(plane.normal);
+		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
 		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
-		
+
 		// マウス操作
 		float sensitivity = 0.0025f; // 感度をここで調整
 		ImGuiIO& io = ImGui::GetIO();
@@ -752,8 +783,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		// 球体の描画
-		DrawSphere(sphere[0], cameraViewProjectionMatrix, viewportMatrix, sphere[0].color);
+		// 線分を描画
+		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), segment.color);
 
 		// 平面の描画
 		DrawPlane(plane, cameraViewProjectionMatrix, viewportMatrix, plane.color);
