@@ -450,11 +450,12 @@ Vector3 VectorSubtract(const Vector3& v1, const Vector3& v2) {
 Vector3 Normalize(const Vector3& v) {
 
 	Vector3 result = {};
-
-	result.x = v.x / Length(v);
-	result.y = v.y / Length(v);
-	result.z = v.z / Length(v);
-
+	float length = Length(v);
+	if (length != 0.0f) {
+		result.x = v.x / Length(v);
+		result.y = v.y / Length(v);
+		result.z = v.z / Length(v);
+	}
 	return result;
 };
 
@@ -572,11 +573,7 @@ bool IsCollision(Segment& segment, Plane& plane) {
 	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
 
 	// tが線分の範囲内にあれば衝突している
-	if (t >= 0.0f && t <= 1.0f) {
-		return true;
-	}
-
-	return false;
+	return (t >= 0.0f && t <= 1.0f);
 }
 
 Vector3 Perpendicular(const Vector3& vector) {
@@ -738,13 +735,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
-		ImGui::DragFloat3("SphereCenter", &SphereCenter.x, 0.01f);
-		ImGui::DragFloat3("PlaneNormal", &plane.normal.x, 0.01f);
-		plane.normal = Normalize(plane.normal);
+		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
+		if (ImGui::DragFloat3("PlaneNormal", &plane.normal.x, 0.01f)) {
+			plane.normal = Normalize(plane.normal);
+		}
 		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
 
 		// マウス操作
-		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
 		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
 
