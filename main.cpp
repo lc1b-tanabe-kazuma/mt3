@@ -537,7 +537,6 @@ bool Iscollision(Sphere& s1, Sphere& s2) {
 		CollisionColor = WHITE;
 		s1.color = CollisionColor;
 	}
-
 	return s1.color;
 }
 
