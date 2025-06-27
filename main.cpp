@@ -54,6 +54,11 @@ struct Segment {
 	uint32_t color;
 };
 
+// 三角形
+struct Triangle {
+	Vector3 vertices[3]; // 頂点
+};
+
 // 長さ
 float Length(const Vector3& v) {
 
@@ -582,6 +587,54 @@ Vector3 Perpendicular(const Vector3& vector) {
 	return { 0.0f, -vector.z, vector.y };
 };
 
+// 三角形と線分の当たり判定
+bool IscollisionTriangle(Segment& segment, Triangle& triangle) {
+	const float EPSILON = 1e-6f;
+
+	Vector3 p0 = triangle.vertices[0];
+	Vector3 p1 = triangle.vertices[1];
+	Vector3 p2 = triangle.vertices[2];
+
+	Vector3 edge1 = VectorSubtract(p1, p0);
+	Vector3 edge2 = VectorSubtract(p2, p0);
+
+	Vector3 dir = segment.diff;
+	Vector3 orig = segment.origin;
+
+	Vector3 h = Cross(dir, edge2);
+	float a = Dot(edge1, h);
+	if (std::abs(a) < EPSILON) {
+		segment.color = 0xFFFFFFFF; // 白にリセット
+		return false; // 平行なので衝突しない
+	}
+
+	float f = 1.0f / a;
+	Vector3 s = VectorSubtract(orig, p0);
+	float u = f * Dot(s, h);
+	if (u < 0.0f || u > 1.0f) {
+		segment.color = 0xFFFFFFFF; // 白にリセット
+		return false;
+	}
+
+	Vector3 q = Cross(s, edge1);
+	float v = f * Dot(dir, q);
+	if (v < 0.0f || u + v > 1.0f) {
+		segment.color = 0xFFFFFFFF; // 白にリセット
+		return false;
+	}
+
+	float t = f * Dot(edge2, q);
+	if (t < 0.0f || t > 1.0f) {
+		segment.color = 0xFFFFFFFF; // 白にリセット
+		return false; // 線分の範囲外なら交差しない
+	}
+
+	// 交差しているので色を赤に変更
+	segment.color = 0xFF0000FF;
+	return true; // 交差あり
+}
+
+
 // 平面の描画
 void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
 	Vector3 center = ScalarMultiply(plane.distance, plane.normal);
@@ -603,6 +656,20 @@ void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const 
 	Novice::DrawLine(int(points[1].x), int(points[1].y), int(points[3].x), int(points[3].y), color);
 	Novice::DrawLine(int(points[3].x), int(points[3].y), int(points[0].x), int(points[0].y), color);
 	Novice::DrawLine(int(points[2].x), int(points[2].y), int(points[0].x), int(points[0].y), color);
+}
+
+// 三角形の描画
+void DrawTriangle(Triangle& triangle, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	// 三角形の各頂点を変換する（ワールド → ビュー射影 → ビューポート）
+	Vector3 ndc0 = Transform(viewProjectionMatrix, triangle.vertices[0]);
+	Vector3 ndc1 = Transform(viewProjectionMatrix, triangle.vertices[1]);
+	Vector3 ndc2 = Transform(viewProjectionMatrix, triangle.vertices[2]);
+
+	Vector3 screen0 = Transform(viewportMatrix, ndc0);
+	Vector3 screen1 = Transform(viewportMatrix, ndc1);
+	Vector3 screen2 = Transform(viewportMatrix, ndc2);
+
+	Novice::DrawTriangle(int(screen0.x), int(screen0.y), int(screen1.x), int(screen1.y), int(screen2.x), int(screen2.y), color, kFillModeWireFrame);
 }
 
 //
@@ -664,16 +731,27 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
+	// 線分
 	Segment segment;
 	segment.origin = { 0.0f, 0.0f, 0.0f };
 	segment.diff = { 1.0f, 1.0f, 1.0f };
 	segment.color = WHITE;
 
-	// 平面の初期化
-	Plane plane = {};
-	plane.normal = { 0.0f, 1.0f, 0.0f };
-	plane.distance = 1.0f;
-	plane.color = WHITE;
+	Triangle triangle[3];
+
+	// 底辺をy=0で揃える（例: 2点が同じy座標0）
+	triangle[0].vertices[0] = { -1.0f, 0.0f, 0.0f }; // 底辺左端
+	triangle[0].vertices[1] = { 1.0f, 0.0f, 0.0f }; // 底辺右端
+	triangle[0].vertices[2] = { 0.0f, 1.0f, 0.0f }; // 頂点（上）
+
+	triangle[1].vertices[0] = { 0.0f, 0.0f, 0.0f }; // 底辺左端
+	triangle[1].vertices[1] = { 2.0f, 0.0f, 0.0f }; // 底辺右端
+	triangle[1].vertices[2] = { 1.0f, 1.0f, 0.0f }; // 頂点（上）
+
+	triangle[2].vertices[0] = { 1.0f, 0.0f, 0.0f }; // 底辺左端
+	triangle[2].vertices[1] = { 3.0f, 0.0f, 0.0f }; // 底辺右端
+	triangle[2].vertices[2] = { 2.0f, 1.0f, 0.0f }; // 頂点（上）
+
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -689,14 +767,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// 衝突判定
-		bool isHit = IsCollision(segment, plane);
+		IscollisionTriangle(segment, *triangle);
 
-		if (isHit) {
-			segment.color = RED;
-		} else {
-			segment.color = WHITE;
-		}
-
+		// カメラ位置
 		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
 		cameraPosition.y = radius * std::sinf(cameraRotate.x);
 		cameraPosition.z = radius * std::cosf(cameraRotate.x) * std::cosf(cameraRotate.y);
@@ -727,19 +800,31 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
 			cameraRotate = { 0.26f, 0.0f, 0.0f };
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
-			plane.normal = { 0.0f, 1.0f, 0.0f };
-			plane.distance = 1.0f;
+
 			segment = { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } };
+
+			// 底辺をy=0で揃える（例: 2点が同じy座標0）
+			triangle[0].vertices[0] = { -1.0f, 0.0f, 0.0f }; // 底辺左端
+			triangle[0].vertices[1] = { 1.0f, 0.0f, 0.0f }; // 底辺右端
+			triangle[0].vertices[2] = { 0.0f, 1.0f, 0.0f }; // 頂点（上）
+
+			triangle[1].vertices[0] = { 0.0f, 0.0f, 0.0f }; // 底辺左端
+			triangle[1].vertices[1] = { 2.0f, 0.0f, 0.0f }; // 底辺右端
+			triangle[1].vertices[2] = { 1.0f, 1.0f, 0.0f }; // 頂点（上）
+
+			triangle[2].vertices[0] = { 1.0f, 0.0f, 0.0f }; // 底辺左端
+			triangle[2].vertices[1] = { 3.0f, 0.0f, 0.0f }; // 底辺右端
+			triangle[2].vertices[2] = { 2.0f, 1.0f, 0.0f }; // 頂点（上）
 		}
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
-		ImGui::DragFloat("PlaneDistance", &plane.distance, 0.01f);
-		if (ImGui::DragFloat3("PlaneNormal", &plane.normal.x, 0.01f)) {
-			plane.normal = Normalize(plane.normal);
-		}
+
 		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
 		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
+		ImGui::DragFloat3("triangle.v0", &triangle[0].vertices[0].x, 0.01f);
+		ImGui::DragFloat3("triangle.v1", &triangle[0].vertices[1].x, 0.01f);
+		ImGui::DragFloat3("triangle.v2", &triangle[0].vertices[2].x, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -783,8 +868,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// 線分を描画
 		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), segment.color);
 
-		// 平面の描画
-		DrawPlane(plane, cameraViewProjectionMatrix, viewportMatrix, plane.color);
+		DrawTriangle(*triangle, cameraViewProjectionMatrix, viewportMatrix, WHITE);
 
 		///
 		/// ↑描画処理ここまで
