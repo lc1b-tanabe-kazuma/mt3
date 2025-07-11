@@ -1,11 +1,11 @@
-#include <Novice.h>
-
+#define NOMINMAX
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <assert.h>
 #include <imgui.h>
 #include <iostream>
 #include <algorithm>
+#include <Novice.h>
 
 const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_03";
 
@@ -492,6 +492,11 @@ float Dot(const Vector3& v1, const Vector3& v2) {
 	return result;
 };
 
+// ベクトルの長さの二乗を計算する関数を追加
+float LengthSquared(const Vector3& v) {
+	return (v.x * v.x) + (v.y * v.y) + (v.z * v.z);
+}
+
 Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 	Vector3 zAxis = Normalize(VectorSubtract(target, eye));
 	Vector3 xAxis = Normalize(Cross(up, zAxis));
@@ -648,6 +653,20 @@ bool IsCollisionAABB(const AABB& aabb1, const AABB& aabb2) {
 		(aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z);   // z軸
 }
 
+// AABBと球の衝突判定
+bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
+	
+	// 最近接点を求める
+	Vector3 closestPoint{ std::clamp(sphere.center.x, aabb.min.x, aabb.max.x),
+		std::clamp(sphere.center.y, aabb.min.y, aabb.max.y),
+		std::clamp(sphere.center.z, aabb.min.z, aabb.max.z) };
+
+	// 最近接点と球の中心の距離を計算
+	float distance = Length(VectorSubtract(closestPoint, sphere.center));
+
+	return (distance <= sphere.radius);
+}
+
 // 平面の描画
 void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
 	Vector3 center = ScalarMultiply(plane.distance, plane.normal);
@@ -783,17 +802,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
-	AABB aabb1{};
+	AABB aabb{};
 
-	aabb1.min = { -0.5f,-0.5f,-0.5f };
-	aabb1.max = { 0.0f,0.0f,0.0f };
-	aabb1.color = WHITE;
+	aabb.min = { -0.5f,-0.5f,-0.5f };
+	aabb.max = { 0.0f,0.0f,0.0f };
+	aabb.color = WHITE;
 
-	AABB aabb2{};
-
-	aabb2.max = { 1.0f,1.0f,1.0f };
-	aabb2.min = { 0.2f,0.2f,0.2f };
-	aabb2.color = WHITE;
+	Sphere sphere;
+	sphere.center = { 1.0f, 1.0f, 1.0f };
+	sphere.radius = 0.5f;
+	sphere.color = WHITE;
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -808,19 +826,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		// 入れ替わり対策
-		aabb1.min.x = (std::min)(aabb1.min.x, aabb1.max.x);
-		aabb1.max.x = (std::max)(aabb1.min.x, aabb1.max.x);
-		aabb1.min.y = (std::min)(aabb1.min.y, aabb1.max.y);
-		aabb1.max.y = (std::max)(aabb1.min.y, aabb1.max.y);
-		aabb1.min.z = (std::min)(aabb1.min.z, aabb1.max.z);
-		aabb1.max.z = (std::max)(aabb1.min.z, aabb1.max.z);
-
 		// 衝突判定
-		if (IsCollisionAABB(aabb1, aabb2)) {
-			aabb1.color = RED;
+		if (IsCollisionAABBToSphere(aabb, sphere)) {
+			sphere.color = RED; // 衝突している場合は赤
 		} else {
-			aabb1.color = WHITE;
+			sphere.color = WHITE; // 衝突していない場合は白
 		}
 
 		// カメラ位置
@@ -850,16 +860,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
 			cameraRotate = { 0.26f, 0.0f, 0.0f };
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
-			aabb1.max = { -1.0f,1.0f,-1.0f };
-			aabb1.min = { -0.5f,-0.5f,-0.5f };
+
 		}
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
-		// AABB1の位置を操作
-		ImGui::DragFloat3("AABB1 Min", &aabb1.min.x, 0.01f);
-		ImGui::DragFloat3("AABB1 Max", &aabb1.max.x, 0.01f);
+		// 球体の位置を操作
+		ImGui::DragFloat3("Sphere Center", &sphere.center.x, 0.01f);
+		ImGui::DragFloat("Sphere Radius", &sphere.radius, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -900,9 +909,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		DrawAABB(aabb1, cameraViewProjectionMatrix, viewportMatrix, aabb1.color);
+		// Sphereの描画
+		DrawSphere(sphere, cameraViewProjectionMatrix, viewportMatrix, sphere.color);
 
-		DrawAABB(aabb2, cameraViewProjectionMatrix, viewportMatrix, aabb2.color);
+		// AABBの描画
+		DrawAABB(aabb, cameraViewProjectionMatrix, viewportMatrix, aabb.color);
 
 		///
 		/// ↑描画処理ここまで
