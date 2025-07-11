@@ -58,6 +58,13 @@ struct Segment {
 struct Triangle {
 	Vector3 vertices[3]; // 頂点
 };
+// 箱
+struct AABB
+{
+	Vector3 min;
+	Vector3 max;
+	uint32_t color;
+};
 
 // 長さ
 float Length(const Vector3& v) {
@@ -634,6 +641,12 @@ bool IscollisionTriangle(Segment& segment, Triangle& triangle) {
 	return true; // 交差あり
 }
 
+// AABBの当たり判定
+bool IsCollisionAABB(const AABB& aabb1, const AABB& aabb2) {
+	return (aabb1.min.x <= aabb2.max.x && aabb1.max.x >= aabb2.min.x) && // x軸
+		(aabb1.min.y <= aabb2.max.y && aabb1.max.y >= aabb2.min.y) && // y軸
+		(aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z);   // z軸
+}
 
 // 平面の描画
 void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
@@ -670,6 +683,45 @@ void DrawTriangle(Triangle& triangle, const Matrix4x4& viewProjectionMatrix, con
 	Vector3 screen2 = Transform(viewportMatrix, ndc2);
 
 	Novice::DrawTriangle(int(screen0.x), int(screen0.y), int(screen1.x), int(screen1.y), int(screen2.x), int(screen2.y), color, kFillModeWireFrame);
+}
+
+// AABBの描画
+void DrawAABB(AABB& aabb, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	Vector3 corners[8] = {
+		{ aabb.min.x, aabb.min.y, aabb.min.z}, // 0
+		{ aabb.max.x, aabb.min.y, aabb.min.z}, // 1
+		{ aabb.max.x, aabb.max.y, aabb.min.z}, // 2
+		{ aabb.min.x, aabb.max.y, aabb.min.z}, // 3
+		{ aabb.min.x, aabb.min.y, aabb.max.z}, // 4
+		{ aabb.max.x, aabb.min.y, aabb.max.z}, // 5
+		{ aabb.max.x, aabb.max.y, aabb.max.z}, // 6
+		{ aabb.min.x, aabb.max.y, aabb.max.z}  // 7
+	};
+
+	// 各点を射影・ビューポート変換
+	Vector3 projected[8];
+	for (int i = 0; i < 8; i++) {
+		Vector3 v = Transform(viewProjectionMatrix, corners[i]);
+		projected[i] = Transform(viewportMatrix, v);
+	}
+
+	// AABBの12辺を描画（intにキャストして使用）
+	auto drawEdge = [&](int i, int j) {
+		Novice::DrawLine(
+			static_cast<int>(projected[i].x), static_cast<int>(projected[i].y),
+			static_cast<int>(projected[j].x), static_cast<int>(projected[j].y),
+			color
+		);
+		};
+
+	// 前面
+	drawEdge(0, 1); drawEdge(1, 2); drawEdge(2, 3); drawEdge(3, 0);
+
+	// 背面
+	drawEdge(4, 5); drawEdge(5, 6); drawEdge(6, 7); drawEdge(7, 4);
+
+	// 側面
+	drawEdge(0, 4); drawEdge(1, 5); drawEdge(2, 6); drawEdge(3, 7);
 }
 
 //
@@ -731,27 +783,17 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
-	// 線分
-	Segment segment;
-	segment.origin = { 0.0f, 0.0f, 0.0f };
-	segment.diff = { 1.0f, 1.0f, 1.0f };
-	segment.color = WHITE;
+	AABB aabb1{};
 
-	Triangle triangle[3];
+	aabb1.min = { -0.5f,-0.5f,-0.5f };
+	aabb1.max = { 0.0f,0.0f,0.0f };
+	aabb1.color = WHITE;
 
-	// 底辺をy=0で揃える（例: 2点が同じy座標0）
-	triangle[0].vertices[0] = { -1.0f, 0.0f, 0.0f }; // 底辺左端
-	triangle[0].vertices[1] = { 1.0f, 0.0f, 0.0f }; // 底辺右端
-	triangle[0].vertices[2] = { 0.0f, 1.0f, 0.0f }; // 頂点（上）
+	AABB aabb2{};
 
-	triangle[1].vertices[0] = { 0.0f, 0.0f, 0.0f }; // 底辺左端
-	triangle[1].vertices[1] = { 2.0f, 0.0f, 0.0f }; // 底辺右端
-	triangle[1].vertices[2] = { 1.0f, 1.0f, 0.0f }; // 頂点（上）
-
-	triangle[2].vertices[0] = { 1.0f, 0.0f, 0.0f }; // 底辺左端
-	triangle[2].vertices[1] = { 3.0f, 0.0f, 0.0f }; // 底辺右端
-	triangle[2].vertices[2] = { 2.0f, 1.0f, 0.0f }; // 頂点（上）
-
+	aabb2.max = { 1.0f,1.0f,1.0f };
+	aabb2.min = { 0.2f,0.2f,0.2f };
+	aabb2.color = WHITE;
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -766,8 +808,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
+		// 入れ替わり対策
+		aabb1.min.x = (std::min)(aabb1.min.x, aabb1.max.x);
+		aabb1.max.x = (std::max)(aabb1.min.x, aabb1.max.x);
+		aabb1.min.y = (std::min)(aabb1.min.y, aabb1.max.y);
+		aabb1.max.y = (std::max)(aabb1.min.y, aabb1.max.y);
+		aabb1.min.z = (std::min)(aabb1.min.z, aabb1.max.z);
+		aabb1.max.z = (std::max)(aabb1.min.z, aabb1.max.z);
+
 		// 衝突判定
-		IscollisionTriangle(segment, *triangle);
+		if (IsCollisionAABB(aabb1, aabb2)) {
+			aabb1.color = RED;
+		} else {
+			aabb1.color = WHITE;
+		}
 
 		// カメラ位置
 		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
@@ -791,40 +845,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		Vector3 start = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, segment.origin));
-
-		Vector3 end = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
-
 		// リセット
 		if (keys[DIK_R]) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
 			cameraRotate = { 0.26f, 0.0f, 0.0f };
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
-
-			segment = { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f } };
-
-			// 底辺をy=0で揃える（例: 2点が同じy座標0）
-			triangle[0].vertices[0] = { -1.0f, 0.0f, 0.0f }; // 底辺左端
-			triangle[0].vertices[1] = { 1.0f, 0.0f, 0.0f }; // 底辺右端
-			triangle[0].vertices[2] = { 0.0f, 1.0f, 0.0f }; // 頂点（上）
-
-			triangle[1].vertices[0] = { 0.0f, 0.0f, 0.0f }; // 底辺左端
-			triangle[1].vertices[1] = { 2.0f, 0.0f, 0.0f }; // 底辺右端
-			triangle[1].vertices[2] = { 1.0f, 1.0f, 0.0f }; // 頂点（上）
-
-			triangle[2].vertices[0] = { 1.0f, 0.0f, 0.0f }; // 底辺左端
-			triangle[2].vertices[1] = { 3.0f, 0.0f, 0.0f }; // 底辺右端
-			triangle[2].vertices[2] = { 2.0f, 1.0f, 0.0f }; // 頂点（上）
+			aabb1.max = { -1.0f,1.0f,-1.0f };
+			aabb1.min = { -0.5f,-0.5f,-0.5f };
 		}
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
-		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
-		ImGui::DragFloat3("triangle.v0", &triangle[0].vertices[0].x, 0.01f);
-		ImGui::DragFloat3("triangle.v1", &triangle[0].vertices[1].x, 0.01f);
-		ImGui::DragFloat3("triangle.v2", &triangle[0].vertices[2].x, 0.01f);
+		// AABB1の位置を操作
+		ImGui::DragFloat3("AABB1 Min", &aabb1.min.x, 0.01f);
+		ImGui::DragFloat3("AABB1 Max", &aabb1.max.x, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -865,10 +900,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		// 線分を描画
-		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), segment.color);
+		DrawAABB(aabb1, cameraViewProjectionMatrix, viewportMatrix, aabb1.color);
 
-		DrawTriangle(*triangle, cameraViewProjectionMatrix, viewportMatrix, WHITE);
+		DrawAABB(aabb2, cameraViewProjectionMatrix, viewportMatrix, aabb2.color);
 
 		///
 		/// ↑描画処理ここまで
