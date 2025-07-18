@@ -874,13 +874,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// Grid線の描画
-		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
+		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		// Sphereの描画
-		DrawSphere(sphere, cameraViewProjectionMatrix, viewportMatrix, sphere.color);
+		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, BLACK);
+		DrawSphere(clossPointSphere, viewProjectionMatrix, viewportMatrix, RED);
 
-		// AABBの描画
-		DrawAABB(aabb, cameraViewProjectionMatrix, viewportMatrix, aabb.color);
+		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), WHITE);
 
 		///
 		/// ↑描画処理ここまで
