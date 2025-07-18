@@ -520,11 +520,17 @@ Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 }
 
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
-	Vector3 result = {};
-	result.x = v1.x * v2.x;
-	result.y = v1.y * v2.y;
-	result.z = v1.z * v2.z;
-	return result;
+	float dot = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+	float lenSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
+	if (lenSq == 0.0f) {
+		return { 0.0f, 0.0f, 0.0f }; // ゼロベクトルへの射影はゼロベクトルにする
+	}
+	float scale = dot / lenSq;
+	return {
+		v2.x * scale,
+		v2.y * scale,
+		v2.z * scale
+	};
 }
 
 Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
