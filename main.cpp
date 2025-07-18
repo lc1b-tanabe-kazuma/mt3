@@ -799,25 +799,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 cameraTranslate = { 0.0f, 1.9f, -6.49f };
 	Vector3 cameraRotate = { 0.26f, 0.0f, 0.0f };
 	Vector3 SphereCenter = { 0.0f, 0.0f, 0.0f };
-	float cameraFovY = 0.45f;
-	Vector3 target = { 0.0f, 0.0f, 0.0f };
-	Vector3 up = { 0.0f, 1.0f, 0.0f };
+	
 
-	// 極座標からカメラ位置を計算（cameraRotate.x = Pitch, cameraRotate.y = Yaw）
-	Vector3 cameraPosition;
-	float radius = 6.0f; // カメラ距離
-#pragma endregion
-
-	AABB aabb{};
-
-	aabb.min = { -0.5f,-0.5f,-0.5f };
-	aabb.max = { 0.0f,0.0f,0.0f };
-	aabb.color = WHITE;
-
-	Sphere sphere;
-	sphere.center = { 1.0f, 1.0f, 1.0f };
-	sphere.radius = 0.5f;
-	sphere.color = WHITE;
+	Segment segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
+	Vector3 point = { -1.5f, 0.6f, 0.6f };
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -876,8 +861,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, BLACK);
-		DrawSphere(clossPointSphere, viewProjectionMatrix, viewportMatrix, RED);
+		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, RED);
+		DrawSphere(clossPointSphere, viewProjectionMatrix, viewportMatrix, BLACK);
 
 		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), WHITE);
 
