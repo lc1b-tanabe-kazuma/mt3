@@ -832,76 +832,37 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		// 衝突判定
-		if (IsCollisionAABBToSphere(aabb, sphere)) {
-			sphere.color = RED; // 衝突している場合は赤
-		} else {
-			sphere.color = WHITE; // 衝突していない場合は白
-		}
+		// ビュー行列
+		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1, 1, 1 }, cameraRotate, cameraTranslate);
+		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
 
-		// カメラ位置
-		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
-		cameraPosition.y = radius * std::sinf(cameraRotate.x);
-		cameraPosition.z = radius * std::cosf(cameraRotate.x) * std::cosf(cameraRotate.y);
-
-		// ビュー行列（LookAt式）
-		Matrix4x4 cameraViewMatrix = MakeLookAtMatrix(cameraPosition, target, up);
-
-		// 射影行列（透視投影）
-		Matrix4x4 cameraProjectionMatrix = MakePerspectiveFovMatrix(
-			cameraFovY,
-			float(kWindowWidth) / float(kWindowHeight),
-			0.1f,
-			100.0f
-		);
-
-		// ビュー×プロジェクション行列
-		Matrix4x4 cameraViewProjectionMatrix = Multiply(cameraViewMatrix, cameraProjectionMatrix);
+		// プロジェクション
+		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, float(kWindowWidth) / float(kWindowHeight), 0.1f, 100.0f);
+		Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
+		Vector3 project = Project(VectorSubtract(point, segment.origin), segment.diff);
+		Vector3 clossPoint = ClossPoint(point, segment);
+
+		Sphere sphere = { point,0.01f };
+		Sphere clossPointSphere = { clossPoint,0.01f };
+
+		Vector3 start = Transform(viewportMatrix, Transform(viewProjectionMatrix, segment.origin));
+		Vector3 end = Transform(viewportMatrix, Transform(viewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
+
 		// リセット
 		if (keys[DIK_R]) {
-			cameraTranslate = { 0.0f, 1.9f, -6.49f };
-			cameraRotate = { 0.26f, 0.0f, 0.0f };
-			SphereCenter = { 0.0f, 0.0f, 0.0f };
-
+			point = { -1.5f, 0.6f, 0.6f };
+			segment = { { -2.0f, -1.0f, 0.0f }, { 3.0f, 2.0f, 2.0f } };
 		}
 
-		// ImGuiの初期化
 		ImGui::Begin("Window");
-
-		// 球体の位置を操作
-		ImGui::DragFloat3("Sphere Center", &sphere.center.x, 0.01f);
-		ImGui::DragFloat("Sphere Radius", &sphere.radius, 0.01f);
-
-		// マウス操作
-		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
-		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
-
-		// マウス操作
-		float sensitivity = 0.0025f; // 感度をここで調整
-		ImGuiIO& io = ImGui::GetIO();
-
-		if (ImGui::IsMouseDown(1)) { // 右ドラッグで回転
-			cameraRotate.y += io.MouseDelta.x * sensitivity;  // Yaw
-			cameraRotate.x += io.MouseDelta.y * sensitivity;  // Pitch
-		}
-
-		if (ImGui::IsMouseDown(2)) { // 中ドラッグでパン（平行移動）
-			Vector3 right = { std::cos(cameraRotate.y), 0, -std::sin(cameraRotate.y) };
-			up = { 0, 1, 0 };
-			cameraTranslate.x -= io.MouseDelta.x * 0.01f * right.x;
-			cameraTranslate.z -= io.MouseDelta.x * 0.01f * right.z;
-			cameraTranslate.x += io.MouseDelta.y * 0.01f * up.x;
-			cameraTranslate.y += io.MouseDelta.y * 0.01f * up.y;
-			cameraTranslate.z += io.MouseDelta.y * 0.01f * up.z;
-		}
-
-		// ホイールでズーム（FOV）
-		cameraFovY -= io.MouseWheel * 0.05f;
-		cameraFovY = std::clamp(cameraFovY, 0.1f, 1.5f);
+		ImGui::DragFloat3("point", &point.x, 0.01f);
+		ImGui::DragFloat3("segment.origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("segment.diff", &segment.diff.x, 0.01f);
+		ImGui::InputFloat3("Project", &project.x, "%.3f", ImGuiInputTextFlags_ReadOnly);
 		ImGui::End();
 
 		///
