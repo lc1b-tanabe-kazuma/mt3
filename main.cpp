@@ -687,30 +687,49 @@ bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
 
 // AABBと線の当たり判定
 bool IsCollisionAABBtoSegment(const AABB& aabb, const Segment& segment) {
+	Vector3 origin = segment.origin;
+	Vector3 dir = segment.diff;
 
-	Vector3 dir = VectorSubtract(segment.diff , segment.origin); // 線分の方向ベクトル
-	Vector3 invDir = {
-		1.0f / (dir.x != 0.0f ? dir.x : 1e-6f), // 0除算対策
-		1.0f / (dir.y != 0.0f ? dir.y : 1e-6f),
-		1.0f / (dir.z != 0.0f ? dir.z : 1e-6f),
-	};
+	float tmin = 0.0f;
+	float tmax = 1.0f; // 線分の範囲は [0,1]
 
-	// AABBの最小・最大座標
-	Vector3 tMin = VectorMultiply(VectorSubtract(aabb.min, segment.origin) , invDir);
-	Vector3 tMax = VectorMultiply(VectorSubtract(aabb.max, segment.origin), invDir);
-
-	// スラブのmin/maxを補正（符号によって反転している場合があるため）
-	Vector3 t1 = { std::min(tMin.x, tMax.x), std::min(tMin.y, tMax.y), std::min(tMin.z, tMax.z) };
-	Vector3 t2 = { std::max(tMin.x, tMax.x), std::max(tMin.y, tMax.y), std::max(tMin.z, tMax.z) };
-
-	float tNear = std::max(std::max(t1.x, t1.y), t1.z);
-	float tFar = std::min(std::min(t2.x, t2.y), t2.z);
-
-	// 線分の範囲 [0, 1] において交差しているか？
-	if (tNear <= tFar && tFar >= 0.0f && tNear <= 1.0f) {
-		return true; // 衝突
+	// X軸スラブ
+	if (dir.x != 0.0f) {
+		float tx1 = (aabb.min.x - origin.x) / dir.x;
+		float tx2 = (aabb.max.x - origin.x) / dir.x;
+		float tNearX = std::min(tx1, tx2);
+		float tFarX = std::max(tx1, tx2);
+		tmin = std::max(tmin, tNearX);
+		tmax = std::min(tmax, tFarX);
+	} else {
+		if (origin.x < aabb.min.x || origin.x > aabb.max.x) return false;
 	}
-	return false;
+
+	// Y軸スラブ
+	if (dir.y != 0.0f) {
+		float ty1 = (aabb.min.y - origin.y) / dir.y;
+		float ty2 = (aabb.max.y - origin.y) / dir.y;
+		float tNearY = std::min(ty1, ty2);
+		float tFarY = std::max(ty1, ty2);
+		tmin = std::max(tmin, tNearY);
+		tmax = std::min(tmax, tFarY);
+	} else {
+		if (origin.y < aabb.min.y || origin.y > aabb.max.y) return false;
+	}
+
+	// Z軸スラブ
+	if (dir.z != 0.0f) {
+		float tz1 = (aabb.min.z - origin.z) / dir.z;
+		float tz2 = (aabb.max.z - origin.z) / dir.z;
+		float tNearZ = std::min(tz1, tz2);
+		float tFarZ = std::max(tz1, tz2);
+		tmin = std::max(tmin, tNearZ);
+		tmax = std::min(tmax, tFarZ);
+	} else {
+		if (origin.z < aabb.min.z || origin.z > aabb.max.z) return false;
+	}
+
+	return tmin <= tmax;
 }
 
 // 平面の描画
@@ -803,7 +822,6 @@ void MatrixScreenPrintf(int x, int y, const Matrix4x4& m, const char* label) {
 		for (int colum = 0; colum < 4; ++colum) {
 			Novice::ScreenPrintf(x + colum * kColumnWidth, y + (row + 1) * kRowHeight, "%6.2f", m.m[row][colum]);
 		}
-
 	}
 }
 
