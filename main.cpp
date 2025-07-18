@@ -458,6 +458,18 @@ Vector3 VectorSubtract(const Vector3& v1, const Vector3& v2) {
 	return result;
 };
 
+// ベクトルの要素ごとの乗算
+Vector3 VectorMultiply(const Vector3& v1, const Vector3& v2) {
+
+	Vector3 result = {};
+
+	result.x = v1.x * v2.x;
+	result.y = v1.y * v2.y;
+	result.z = v1.z * v2.z;
+
+	return result;
+}
+
 // ベクトルの正規化
 Vector3 Normalize(const Vector3& v) {
 
@@ -520,11 +532,17 @@ Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 }
 
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
-	Vector3 result = {};
-	result.x = v1.x * v2.x;
-	result.y = v1.y * v2.y;
-	result.z = v1.z * v2.z;
-	return result;
+	float dot = Dot(v1, v2);
+	float lenSq = LengthSquared(v2);
+	if (lenSq == 0.0f) {
+		return { 0.0f, 0.0f, 0.0f }; // ゼロベクトルへの射影はゼロベクトルにする
+	}
+	float scale = dot / lenSq;
+	return {
+		v2.x * scale,
+		v2.y * scale,
+		v2.z * scale
+	};
 }
 
 Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
@@ -655,7 +673,7 @@ bool IsCollisionAABB(const AABB& aabb1, const AABB& aabb2) {
 
 // AABBと球の衝突判定
 bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
-	
+
 	// 最近接点を求める
 	Vector3 closestPoint{ std::clamp(sphere.center.x, aabb.min.x, aabb.max.x),
 		std::clamp(sphere.center.y, aabb.min.y, aabb.max.y),
@@ -665,6 +683,34 @@ bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
 	float distance = Length(VectorSubtract(closestPoint, sphere.center));
 
 	return (distance <= sphere.radius);
+}
+
+// AABBと線の当たり判定
+bool IsCollisionAABBtoSegment(const AABB& aabb, const Segment& segment) {
+
+	Vector3 dir = VectorSubtract(segment.diff , segment.origin); // 線分の方向ベクトル
+	Vector3 invDir = {
+		1.0f / (dir.x != 0.0f ? dir.x : 1e-6f), // 0除算対策
+		1.0f / (dir.y != 0.0f ? dir.y : 1e-6f),
+		1.0f / (dir.z != 0.0f ? dir.z : 1e-6f),
+	};
+
+	// AABBの最小・最大座標
+	Vector3 tMin = VectorMultiply(VectorSubtract(aabb.min, segment.origin) , invDir);
+	Vector3 tMax = VectorMultiply(VectorSubtract(aabb.max, segment.origin), invDir);
+
+	// スラブのmin/maxを補正（符号によって反転している場合があるため）
+	Vector3 t1 = { std::min(tMin.x, tMax.x), std::min(tMin.y, tMax.y), std::min(tMin.z, tMax.z) };
+	Vector3 t2 = { std::max(tMin.x, tMax.x), std::max(tMin.y, tMax.y), std::max(tMin.z, tMax.z) };
+
+	float tNear = std::max(std::max(t1.x, t1.y), t1.z);
+	float tFar = std::min(std::min(t2.x, t2.y), t2.z);
+
+	// 線分の範囲 [0, 1] において交差しているか？
+	if (tNear <= tFar && tFar >= 0.0f && tNear <= 1.0f) {
+		return true; // 衝突
+	}
+	return false;
 }
 
 // 平面の描画
@@ -805,13 +851,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	AABB aabb{};
 
 	aabb.min = { -0.5f,-0.5f,-0.5f };
-	aabb.max = { 0.0f,0.0f,0.0f };
+	aabb.max = { 0.5f,0.5f,0.5f };
 	aabb.color = WHITE;
 
-	Sphere sphere;
-	sphere.center = { 1.0f, 1.0f, 1.0f };
-	sphere.radius = 0.5f;
-	sphere.color = WHITE;
+	Segment segment;
+	segment.origin = { -0.7f, 0.3f, 0.0f };
+	segment.diff = { 2.0f, -0.5f, 0.0f };
+	segment.color = WHITE;
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -827,10 +873,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// 衝突判定
-		if (IsCollisionAABBToSphere(aabb, sphere)) {
-			sphere.color = RED; // 衝突している場合は赤
+		if (IsCollisionAABBtoSegment(aabb, segment)) {
+			aabb.color = RED; // 衝突している場合は赤
 		} else {
-			sphere.color = WHITE; // 衝突していない場合は白
+			aabb.color = WHITE; // 衝突していない場合は白
 		}
 
 		// カメラ位置
@@ -855,6 +901,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
+		Vector3 start = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, segment.origin));
+		Vector3 end = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
+
 		// リセット
 		if (keys[DIK_R]) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
@@ -866,9 +915,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
-		// 球体の位置を操作
-		ImGui::DragFloat3("Sphere Center", &sphere.center.x, 0.01f);
-		ImGui::DragFloat("Sphere Radius", &sphere.radius, 0.01f);
+		// 線の位置を変える
+		ImGui::DragFloat3("Segment Origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("Segment Diff", &segment.diff.x, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -909,8 +958,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		// Sphereの描画
-		DrawSphere(sphere, cameraViewProjectionMatrix, viewportMatrix, sphere.color);
+		// 線の描画
+		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), segment.color);
 
 		// AABBの描画
 		DrawAABB(aabb, cameraViewProjectionMatrix, viewportMatrix, aabb.color);
