@@ -509,6 +509,14 @@ float LengthSquared(const Vector3& v) {
 	return (v.x * v.x) + (v.y * v.y) + (v.z * v.z);
 }
 
+// 線形補間
+float Lerp(float x1, float x2, float t) { return (1.0f - t) * x1 + t * x2; }
+
+// ベクトルの線形補間
+Vector3 VectorLerp(const Vector3& v1, const Vector3& v2, float t) {
+	return Vector3(Lerp(v1.x, v2.x, t), Lerp(v1.y, v2.y, t), Lerp(v1.z, v2.z, t));
+}
+
 Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 	Vector3 zAxis = Normalize(VectorSubtract(target, eye));
 	Vector3 xAxis = Normalize(Cross(up, zAxis));
@@ -688,7 +696,7 @@ bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
 // AABBと線の当たり判定
 bool IsCollisionAABBtoSegment(const AABB& aabb, const Segment& segment) {
 
-	Vector3 dir = VectorSubtract(segment.diff , segment.origin); // 線分の方向ベクトル
+	Vector3 dir = VectorSubtract(segment.diff, segment.origin); // 線分の方向ベクトル
 	Vector3 invDir = {
 		1.0f / (dir.x != 0.0f ? dir.x : 1e-6f), // 0除算対策
 		1.0f / (dir.y != 0.0f ? dir.y : 1e-6f),
@@ -696,7 +704,7 @@ bool IsCollisionAABBtoSegment(const AABB& aabb, const Segment& segment) {
 	};
 
 	// AABBの最小・最大座標
-	Vector3 tMin = VectorMultiply(VectorSubtract(aabb.min, segment.origin) , invDir);
+	Vector3 tMin = VectorMultiply(VectorSubtract(aabb.min, segment.origin), invDir);
 	Vector3 tMax = VectorMultiply(VectorSubtract(aabb.max, segment.origin), invDir);
 
 	// スラブのmin/maxを補正（符号によって反転している場合があるため）
@@ -789,6 +797,37 @@ void DrawAABB(AABB& aabb, const Matrix4x4& viewProjectionMatrix, const Matrix4x4
 	drawEdge(0, 4); drawEdge(1, 5); drawEdge(2, 6); drawEdge(3, 7);
 }
 
+void DrawBezier(const Vector3& controlPoint0, const Vector3& controlPoint1, const Vector3& controlPoint2,
+	const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+
+	// 最初の点
+	Vector3 prev = Transform(viewportMatrix, Transform(viewProjectionMatrix, controlPoint0));
+
+	// 分割数
+	const int steps = 50;
+
+	for (int i = 1; i <= steps; ++i) {
+		float t = i / (float)steps;
+
+		// 2次ベジェ曲線の計算（De Casteljau アルゴリズム）
+		Vector3 a = VectorLerp(controlPoint0, controlPoint1, t);
+		Vector3 b = VectorLerp(controlPoint1, controlPoint2, t);
+		Vector3 point = VectorLerp(a, b, t);
+
+		// 座標変換（ワールド → ビュー射影 → ビューポート）
+		Vector3 screenPoint = Transform(viewportMatrix, Transform(viewProjectionMatrix, point));
+
+		// 線分を描画（前の点と現在の点をつなぐ）
+		Novice::DrawLine(
+			static_cast<int>(prev.x), static_cast<int>(prev.y),
+			static_cast<int>(screenPoint.x), static_cast<int>(screenPoint.y),
+			color
+		);
+
+		prev = screenPoint; // 次のループのために現在の点を保存
+	}
+}
+
 //
 static const int kColumnWidth = 60;
 
@@ -848,16 +887,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
-	AABB aabb{};
+	Vector3 contorolPoints[3] = {
+		{-0.8f,0.58f,1.0f},
+		{1.76f,1.0f,-0.3f},
+		{0.94f,-0.7f,2.3f},
+	};
 
-	aabb.min = { -0.5f,-0.5f,-0.5f };
-	aabb.max = { 0.5f,0.5f,0.5f };
-	aabb.color = WHITE;
-
-	Segment segment;
-	segment.origin = { -0.7f, 0.3f, 0.0f };
-	segment.diff = { 2.0f, -0.5f, 0.0f };
-	segment.color = WHITE;
+	Sphere controlSphere[3];
+	for (int i = 0; i < 3; ++i) {
+		controlSphere[i] = {
+		contorolPoints[i], // 中心
+		0.01f,                // 半径
+		BLACK// 色
+		};
+	};
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -873,11 +916,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 
 		// 衝突判定
-		if (IsCollisionAABBtoSegment(aabb, segment)) {
-			aabb.color = RED; // 衝突している場合は赤
-		} else {
-			aabb.color = WHITE; // 衝突していない場合は白
-		}
+
 
 		// カメラ位置
 		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
@@ -901,23 +940,28 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// ビューポート
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		Vector3 start = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, segment.origin));
-		Vector3 end = Transform(viewportMatrix, Transform(cameraViewProjectionMatrix, VectorAdd(segment.origin, segment.diff)));
-
 		// リセット
 		if (keys[DIK_R]) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
 			cameraRotate = { 0.26f, 0.0f, 0.0f };
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
-
+			contorolPoints[0] = { -0.8f,0.58f,1.0f };
+			contorolPoints[1] = { 1.76f,1.0f,-0.3f };
+			contorolPoints[2] = { 0.94f,-0.7f,2.3f };
 		}
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
-		// 線の位置を変える
-		ImGui::DragFloat3("Segment Origin", &segment.origin.x, 0.01f);
-		ImGui::DragFloat3("Segment Diff", &segment.diff.x, 0.01f);
+		// 制御点の位置を変える
+		ImGui::DragFloat3("Control Point 0", &contorolPoints[0].x, 0.01f);
+		ImGui::DragFloat3("Control Point 1", &contorolPoints[1].x, 0.01f);
+		ImGui::DragFloat3("Control Point 2", &contorolPoints[2].x, 0.01f);
+
+		// 球の中心を更新
+		for (int i = 0; i < 3; ++i) {
+			controlSphere[i].center = contorolPoints[i];
+		}
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -958,11 +1002,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		// 線の描画
-		Novice::DrawLine(int(start.x), int(start.y), int(end.x), int(end.y), segment.color);
+		DrawBezier(contorolPoints[0], contorolPoints[1], contorolPoints[2], cameraViewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
 
-		// AABBの描画
-		DrawAABB(aabb, cameraViewProjectionMatrix, viewportMatrix, aabb.color);
+		for (int i = 0; i < 3; ++i) {
+			// 球の描画
+			DrawSphere(controlSphere[i], cameraViewProjectionMatrix, viewportMatrix, controlSphere[i].color);
+		}
 
 		///
 		/// ↑描画処理ここまで
