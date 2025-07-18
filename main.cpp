@@ -520,8 +520,8 @@ Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 }
 
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
-	float dot = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
-	float lenSq = v2.x * v2.x + v2.y * v2.y + v2.z * v2.z;
+	float dot = Dot(v1,v2);
+	float lenSq = LengthSquared(v2);
 	if (lenSq == 0.0f) {
 		return { 0.0f, 0.0f, 0.0f }; // ゼロベクトルへの射影はゼロベクトルにする
 	}
