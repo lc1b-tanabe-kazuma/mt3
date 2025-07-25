@@ -266,6 +266,17 @@ Matrix4x4 MakeRotZMatrix(float radian) {
 	return result;
 }
 
+Matrix4x4 MakeRotateMatrix(const Vector3& rotate) {
+	// Z→X→Yの順で回転（一般的なT-poseベースの腕構造に適している場合が多い）
+	Matrix4x4 rotX = MakeRotXMatrix(rotate.x);
+	Matrix4x4 rotY = MakeRotYMatrix(rotate.y);
+	Matrix4x4 rotZ = MakeRotZMatrix(rotate.z);
+
+	// 合成（順序に注意！Z→X→Y）
+	Matrix4x4 result = Multiply(Multiply(rotY, rotX), rotZ);
+	return result;
+}
+
 // 3次元アフィン変換行列
 Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Vector3& translate) {
 	// スケーリング行列の作成
@@ -854,6 +865,89 @@ void VectorScreenPrintf(int x, int y, const Vector3& vector, const char* label) 
 	Novice::ScreenPrintf(x + kColumnWidth * 3, y, "%s", label);
 };
 
+void DrawLineBetweenParts(
+	const Vector3& posA, // 始点（例：肩）
+	const Vector3& posB, // 終点（例：手首）
+	const Matrix4x4& viewProjMatrix,
+	const Matrix4x4& viewportMatrix,
+	uint32_t color
+) {
+	Line line;
+	line.origin = posA;
+	line.diff = VectorSubtract(posB, posA);
+
+	Vector3 screenStart = Transform(viewportMatrix, Transform(viewProjMatrix, line.origin));
+	Vector3 screenEnd = Transform(viewportMatrix, Transform(viewProjMatrix, VectorAdd(line.origin, line.diff)));
+
+	Novice::DrawLine(
+		static_cast<int>(screenStart.x),
+		static_cast<int>(screenStart.y),
+		static_cast<int>(screenEnd.x),
+		static_cast<int>(screenEnd.y),
+		color
+	);
+}
+
+void DrawArmHierarchy(
+	const Vector3 translates[3],
+	const Vector3 rotates[3],
+	const Vector3 scales[3],
+	const Matrix4x4& viewProjectionMatrix,
+	const Matrix4x4& viewportMatrix,
+	uint32_t color
+) {
+	Matrix4x4 parentMatrix = MakeIndetity4x4();
+
+	Vector3 prevWorldPosition{};
+	bool isFirst = true;
+
+	for (int i = 0; i < 3; ++i) {
+		
+		// 部位毎のワールド変換
+		Matrix4x4 translateMat = MakeTransMatrix(translates[i]);
+		Matrix4x4 rotateMat = MakeRotateMatrix(rotates[i]);
+		Matrix4x4 scaleMat = MakeScaleMatrix(scales[i]);
+		Matrix4x4 localMatrix = Multiply(Multiply(scaleMat, rotateMat), translateMat);
+		
+		// 親のワールド座標と掛け合わせて、子のワールド座標を求める
+		Matrix4x4 worldMatrix = Multiply(localMatrix, parentMatrix);
+
+		// ワールド座標を取得
+		Vector3 worldPosition = {
+			worldMatrix.m[3][0],
+			worldMatrix.m[3][1],
+			worldMatrix.m[3][2]
+		};
+
+		// 色定義（部位ごと）
+		const uint32_t colors[3] = {
+			RED, // 肩（赤）
+			GREEN, // 腕（緑）
+			BLUE  // 手首（青）
+		};
+
+		// 部位ごとに描画
+		DrawSphere({ worldPosition, 0.1f }, viewProjectionMatrix, viewportMatrix, colors[i]);
+
+		// 最初の部位でなければ、前の部位との線を描画
+		if (!isFirst) {
+			// スクリーン座標に変換
+			Vector3 screenStart = Transform(viewportMatrix, Transform(viewProjectionMatrix, prevWorldPosition));
+			Vector3 screenEnd = Transform(viewportMatrix, Transform(viewProjectionMatrix, worldPosition));
+
+			// 部位から部位への線を描画
+			Novice::DrawLine(static_cast<int>(screenStart.x),static_cast<int>(screenStart.y),static_cast<int>(screenEnd.x),static_cast<int>(screenEnd.y),color);
+		}
+
+		// 前の部位のワールド座標を更新
+		prevWorldPosition = worldPosition;
+		isFirst = false;
+
+		// 次の部位の親行列を更新
+		parentMatrix = worldMatrix;
+	}
+}
+
 //ウィンドウの幅
 int kWindowWidth = 1280;
 
@@ -887,19 +981,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	float radius = 6.0f; // カメラ距離
 #pragma endregion
 
-	Vector3 contorolPoints[3] = {
-		{-0.8f,0.58f,1.0f},
-		{1.76f,1.0f,-0.3f},
-		{0.94f,-0.7f,2.3f},
+	// 階層構造で腕を再現する
+	Vector3 translates[3] = {
+		{ 0.0f, 1.0f, 0.0f }, // 肩の基点
+		{ 0.4f, 0.0f, 0.0f }, // 肘
+		{ 0.3f, 0.0f, 0.0f }  // 手首
 	};
 
-	Sphere controlSphere[3];
-	for (int i = 0; i < 3; ++i) {
-		controlSphere[i] = {
-		contorolPoints[i], // 中心
-		0.01f,                // 半径
-		BLACK// 色
-		};
+	Vector3 rotates[3] = {
+		{ 0.0f, 0.0f, -6.8f }, // 肩の回転
+		{ 0.0f, 0.0f, -1.4f }, // 肘回転
+		{ 0.0f, 0.0f, 0.0f } , // 手首の回転
+	};
+
+	Vector3 scales[3] = {
+		{ 1.0f, 1.0f, 1.0f }, // 肩のスケール
+		{ 1.0f, 1.0f, 1.0f }, // 肘のスケール
+		{ 1.0f, 1.0f, 1.0f },  // 手首のスケール
 	};
 
 	// ウィンドウの×ボタンが押されるまでループ
@@ -914,9 +1012,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		///
 		/// ↓更新処理ここから
 		///
-
-		// 衝突判定
-
 
 		// カメラ位置
 		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
@@ -945,23 +1040,18 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 			cameraTranslate = { 0.0f, 1.9f, -6.49f };
 			cameraRotate = { 0.26f, 0.0f, 0.0f };
 			SphereCenter = { 0.0f, 0.0f, 0.0f };
-			contorolPoints[0] = { -0.8f,0.58f,1.0f };
-			contorolPoints[1] = { 1.76f,1.0f,-0.3f };
-			contorolPoints[2] = { 0.94f,-0.7f,2.3f };
 		}
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
 		// 制御点の位置を変える
-		ImGui::DragFloat3("Control Point 0", &contorolPoints[0].x, 0.01f);
-		ImGui::DragFloat3("Control Point 1", &contorolPoints[1].x, 0.01f);
-		ImGui::DragFloat3("Control Point 2", &contorolPoints[2].x, 0.01f);
-
-		// 球の中心を更新
-		for (int i = 0; i < 3; ++i) {
-			controlSphere[i].center = contorolPoints[i];
-		}
+		ImGui::DragFloat3("Sphere 1 Position", &translates[0].x, 0.01f);
+		ImGui::DragFloat3("Sphere 1 Rotate", &rotates[0].x, 0.01f);
+		ImGui::DragFloat3("Sphere 2 Position", &translates[1].x, 0.01f);
+		ImGui::DragFloat3("Sphere 2 Rotate", &rotates[1].x, 0.01f);
+		ImGui::DragFloat3("Sphere 3 Position", &translates[2].x, 0.01f);
+		ImGui::DragFloat3("Sphere 3 Rotate", &rotates[2].x, 0.01f);
 
 		// マウス操作
 		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
@@ -1002,13 +1092,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		// Grid線の描画
 		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
 
-		DrawBezier(contorolPoints[0], contorolPoints[1], contorolPoints[2], cameraViewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
-
-		for (int i = 0; i < 3; ++i) {
-			// 球の描画
-			DrawSphere(controlSphere[i], cameraViewProjectionMatrix, viewportMatrix, controlSphere[i].color);
-		}
-
+		DrawArmHierarchy(translates, rotates, scales, cameraViewProjectionMatrix, viewportMatrix, WHITE);// 線の描画
 		///
 		/// ↑描画処理ここまで
 		///
