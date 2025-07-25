@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <Novice.h>
 
-const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_02_03";
+const char kWindowTitle[] = "LE2C_19_タナベ_カズマ_MT3_03_02";
 
 struct Matrix4x4 {
 	float m[4][4];
@@ -902,13 +902,13 @@ void DrawArmHierarchy(
 	bool isFirst = true;
 
 	for (int i = 0; i < 3; ++i) {
-		
+
 		// 部位毎のワールド変換
 		Matrix4x4 translateMat = MakeTransMatrix(translates[i]);
 		Matrix4x4 rotateMat = MakeRotateMatrix(rotates[i]);
 		Matrix4x4 scaleMat = MakeScaleMatrix(scales[i]);
 		Matrix4x4 localMatrix = Multiply(Multiply(scaleMat, rotateMat), translateMat);
-		
+
 		// 親のワールド座標と掛け合わせて、子のワールド座標を求める
 		Matrix4x4 worldMatrix = Multiply(localMatrix, parentMatrix);
 
@@ -936,7 +936,7 @@ void DrawArmHierarchy(
 			Vector3 screenEnd = Transform(viewportMatrix, Transform(viewProjectionMatrix, worldPosition));
 
 			// 部位から部位への線を描画
-			Novice::DrawLine(static_cast<int>(screenStart.x),static_cast<int>(screenStart.y),static_cast<int>(screenEnd.x),static_cast<int>(screenEnd.y),color);
+			Novice::DrawLine(static_cast<int>(screenStart.x), static_cast<int>(screenStart.y), static_cast<int>(screenEnd.x), static_cast<int>(screenEnd.y), color);
 		}
 
 		// 前の部位のワールド座標を更新
@@ -948,11 +948,56 @@ void DrawArmHierarchy(
 	}
 }
 
-//ウィンドウの幅
-int kWindowWidth = 1280;
+// 単項演算子のオーバーロード
+Vector3 operator+(const Vector3& v) { return v; }
+Vector3 operator-(const Vector3& v) { return Vector3(-v.x, -v.y, -v.z); }
 
-//ウィンドウの高さ
-int kWindowHeight = 720;
+// 2項演算子のオーバーロード
+Vector3 operator+(const Vector3& v1, const Vector3& v2) {
+	return VectorAdd(v1, v2);
+}
+
+// 2項演算子のオーバーロード
+Vector3 operator-(const Vector3& v1, const Vector3& v2) {
+	return VectorSubtract(v1, v2);
+}
+
+// 2項演算子のオーバーロード
+Vector3 operator*(const Vector3& v1, const Vector3& v2) {
+	return VectorMultiply(v1, v2);
+}
+
+// 2項演算子のオーバーロード
+Vector3 operator*(Vector3& v, float s) {
+	v.x *= s;
+	v.y *= s;
+	v.z *= s;
+	return v;
+}
+
+// 2項演算子のオーバーロード
+Vector3 operator/(const Vector3& v, float s) {
+	Vector3 result = v;
+	result.x /= (1.0f / s);
+	result.y /= (1.0f / s);
+	result.z /= (1.0f / s);
+	return result;
+}
+
+// 2項演算子のオーバーロード
+Matrix4x4 operator+(const Matrix4x4& m1, const Matrix4x4& m2) {
+	return Add(m1, m2);
+}
+
+// 2項演算子のオーバーロード
+Matrix4x4 operator-(const Matrix4x4& m1, const Matrix4x4& m2) {
+	return Subtract(m1, m2);
+}
+
+// 2項演算子のオーバーロード
+Matrix4x4 operator*(const Matrix4x4& m1, const Matrix4x4& m2) {
+	return Multiply(m1, m2);
+}
 
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -963,42 +1008,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	// キー入力結果を受け取る箱
 	char keys[256] = { 0 };
 	char preKeys[256] = { 0 };
-
-	///==========================================================================-
-	// カメラの位置は課題が変わってもいじらない
-	///==========================================================================-
-#pragma region
-	// カメラの位置
-	Vector3 cameraTranslate = { 0.0f, 1.9f, -6.49f };
-	Vector3 cameraRotate = { 0.26f, 0.0f, 0.0f };
-	Vector3 SphereCenter = { 0.0f, 0.0f, 0.0f };
-	float cameraFovY = 0.45f;
-	Vector3 target = { 0.0f, 0.0f, 0.0f };
-	Vector3 up = { 0.0f, 1.0f, 0.0f };
-
-	// 極座標からカメラ位置を計算（cameraRotate.x = Pitch, cameraRotate.y = Yaw）
-	Vector3 cameraPosition;
-	float radius = 6.0f; // カメラ距離
-#pragma endregion
-
-	// 階層構造で腕を再現する
-	Vector3 translates[3] = {
-		{ 0.0f, 1.0f, 0.0f }, // 肩の基点
-		{ 0.4f, 0.0f, 0.0f }, // 肘
-		{ 0.3f, 0.0f, 0.0f }  // 手首
-	};
-
-	Vector3 rotates[3] = {
-		{ 0.0f, 0.0f, -6.8f }, // 肩の回転
-		{ 0.0f, 0.0f, -1.4f }, // 肘回転
-		{ 0.0f, 0.0f, 0.0f } , // 手首の回転
-	};
-
-	Vector3 scales[3] = {
-		{ 1.0f, 1.0f, 1.0f }, // 肩のスケール
-		{ 1.0f, 1.0f, 1.0f }, // 肘のスケール
-		{ 1.0f, 1.0f, 1.0f },  // 手首のスケール
-	};
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -1013,72 +1022,28 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		// カメラ位置
-		cameraPosition.x = radius * std::cosf(cameraRotate.x) * std::sinf(cameraRotate.y);
-		cameraPosition.y = radius * std::sinf(cameraRotate.x);
-		cameraPosition.z = radius * std::cosf(cameraRotate.x) * std::cosf(cameraRotate.y);
-
-		// ビュー行列（LookAt式）
-		Matrix4x4 cameraViewMatrix = MakeLookAtMatrix(cameraPosition, target, up);
-
-		// 射影行列（透視投影）
-		Matrix4x4 cameraProjectionMatrix = MakePerspectiveFovMatrix(
-			cameraFovY,
-			float(kWindowWidth) / float(kWindowHeight),
-			0.1f,
-			100.0f
-		);
-
-		// ビュー×プロジェクション行列
-		Matrix4x4 cameraViewProjectionMatrix = Multiply(cameraViewMatrix, cameraProjectionMatrix);
-
-		// ビューポート
-		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
-
-		// リセット
-		if (keys[DIK_R]) {
-			cameraTranslate = { 0.0f, 1.9f, -6.49f };
-			cameraRotate = { 0.26f, 0.0f, 0.0f };
-			SphereCenter = { 0.0f, 0.0f, 0.0f };
-		}
+		Vector3 a{ 0.2f,1.0f,0.0f };
+		Vector3 b{ 2.4f,3.1f,1.2f };
+		Vector3 c = a + b;
+		Vector3 d = a - b;
+		Vector3 e = a * 2.4f;
+		Vector3 rotate{ 0.4f,1.43f,-0.8f };
+		Matrix4x4 rotateXMatrix = MakeRotXMatrix(rotate.x);
+		Matrix4x4 rotateYMatrix = MakeRotYMatrix(rotate.y);
+		Matrix4x4 rotateZMatrix = MakeRotZMatrix(rotate.z);
+		Matrix4x4 rotateMatrix = rotateXMatrix * rotateYMatrix * rotateZMatrix;
 
 		// ImGuiの初期化
 		ImGui::Begin("Window");
 
-		// 制御点の位置を変える
-		ImGui::DragFloat3("Sphere 1 Position", &translates[0].x, 0.01f);
-		ImGui::DragFloat3("Sphere 1 Rotate", &rotates[0].x, 0.01f);
-		ImGui::DragFloat3("Sphere 2 Position", &translates[1].x, 0.01f);
-		ImGui::DragFloat3("Sphere 2 Rotate", &rotates[1].x, 0.01f);
-		ImGui::DragFloat3("Sphere 3 Position", &translates[2].x, 0.01f);
-		ImGui::DragFloat3("Sphere 3 Rotate", &rotates[2].x, 0.01f);
-
-		// マウス操作
-		ImGui::DragFloat("Yaw", &cameraRotate.y, 0.01f);
-		ImGui::DragFloat("Pitch", &cameraRotate.x, 0.01f);
-
-		// マウス操作
-		float sensitivity = 0.0025f; // 感度をここで調整
-		ImGuiIO& io = ImGui::GetIO();
-
-		if (ImGui::IsMouseDown(1)) { // 右ドラッグで回転
-			cameraRotate.y += io.MouseDelta.x * sensitivity;  // Yaw
-			cameraRotate.x += io.MouseDelta.y * sensitivity;  // Pitch
-		}
-
-		if (ImGui::IsMouseDown(2)) { // 中ドラッグでパン（平行移動）
-			Vector3 right = { std::cos(cameraRotate.y), 0, -std::sin(cameraRotate.y) };
-			up = { 0, 1, 0 };
-			cameraTranslate.x -= io.MouseDelta.x * 0.01f * right.x;
-			cameraTranslate.z -= io.MouseDelta.x * 0.01f * right.z;
-			cameraTranslate.x += io.MouseDelta.y * 0.01f * up.x;
-			cameraTranslate.y += io.MouseDelta.y * 0.01f * up.y;
-			cameraTranslate.z += io.MouseDelta.y * 0.01f * up.z;
-		}
-
-		// ホイールでズーム（FOV）
-		cameraFovY -= io.MouseWheel * 0.05f;
-		cameraFovY = std::clamp(cameraFovY, 0.1f, 1.5f);
+		ImGui::Text("c: %f, %f, %f",c.x,c.y,c.z);
+		ImGui::Text("d: %f, %f, %f", d.x, d.y, d.z);
+		ImGui::Text("e: %f, %f, %f", e.x, e.y, e.z);
+		ImGui::Text("matrix:\n %f, %f, %f, %f\n %f, %f, %f, %f\n %f, %f, %f, %f\n %f, %f, %f, %f\n",
+			rotateMatrix.m[0][0], rotateMatrix.m[0][1], rotateMatrix.m[0][2], rotateMatrix.m[0][3],
+			rotateMatrix.m[1][0], rotateMatrix.m[1][1], rotateMatrix.m[1][2], rotateMatrix.m[1][3],
+			rotateMatrix.m[2][0], rotateMatrix.m[2][1], rotateMatrix.m[2][2], rotateMatrix.m[2][3],
+			rotateMatrix.m[3][0], rotateMatrix.m[3][1], rotateMatrix.m[3][2], rotateMatrix.m[3][3]);
 		ImGui::End();
 
 		///
@@ -1089,10 +1054,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓描画処理ここから
 		///
 
-		// Grid線の描画
-		DrawGrid(cameraViewProjectionMatrix, viewportMatrix);
-
-		DrawArmHierarchy(translates, rotates, scales, cameraViewProjectionMatrix, viewportMatrix, WHITE);// 線の描画
 		///
 		/// ↑描画処理ここまで
 		///
