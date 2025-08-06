@@ -519,18 +519,12 @@ Matrix4x4 MakeLookAtMatrix(Vector3 eye, Vector3 target, Vector3 up) {
 	return result;
 }
 
+// 正射影ベクトル
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
-	float dot = Dot(v1,v2);
-	float lenSq = LengthSquared(v2);
-	if (lenSq == 0.0f) {
-		return { 0.0f, 0.0f, 0.0f }; // ゼロベクトルへの射影はゼロベクトルにする
-	}
-	float scale = dot / lenSq;
-	return {
-		v2.x * scale,
-		v2.y * scale,
-		v2.z * scale
-	};
+	float dotAB = Dot(v1, v2);
+	float lenBSq = Dot(v2, v2);
+	float scalar = dotAB / lenBSq;
+	return ScalarMultiply(scalar, v2);
 }
 
 Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
@@ -545,133 +539,12 @@ Vector3 ClossPoint(const Vector3& point, const Segment& segment) {
 	return result;
 }
 
-// 球と球の衝突判定
-bool Iscollision(Sphere& s1, Sphere& s2) {
-	float distance = Length(VectorSubtract(s1.center, s2.center));
-	uint32_t CollisionColor = WHITE;
-
-	// 衝突している場合
-	if (distance <= (s1.radius + s2.radius)) {
-
-		// 色を赤にする
-		CollisionColor = RED;
-		s1.color = CollisionColor;
-	} else {
-		CollisionColor = WHITE;
-		s1.color = CollisionColor;
-	}
-	return s1.color;
-}
-
-// 球と平面の衝突判定
-bool StoPIscollision(Sphere& sphere, Plane& plane) {
-
-	// 球の中心から平面までの距離を計算
-	float distance = std::abs(plane.normal.x * sphere.center.x + plane.normal.y * sphere.center.y + plane.normal.z * sphere.center.z - plane.distance) / Length(plane.normal);
-
-	// 衝突している場合
-	if (distance <= sphere.radius) {
-		// 色を赤にする
-		sphere.color = RED;
-	} else {
-		sphere.color = WHITE;
-	}
-
-	return sphere.color;
-}
-
-// 線分と平面の衝突判定
-bool IsCollision(Segment& segment, Plane& plane) {
-
-	// 垂直判定を行なう為に、法線と線の内積を求める
-	float dot = Dot(plane.normal, segment.diff);
-
-	// 垂直=平行であるので衝突していない
-	if (dot == 0.0f) {
-		return false;
-	}
-
-	// tを求める
-	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
-
-	// tが線分の範囲内にあれば衝突している
-	return (t >= 0.0f && t <= 1.0f);
-}
-
 Vector3 Perpendicular(const Vector3& vector) {
 	if (vector.x != 0.0f || vector.y != 0.0f) {
 		return { -vector.y, vector.x, 0.0f };
 	}
 	return { 0.0f, -vector.z, vector.y };
 };
-
-// 三角形と線分の当たり判定
-bool IscollisionTriangle(Segment& segment, Triangle& triangle) {
-	const float EPSILON = 1e-6f;
-
-	Vector3 p0 = triangle.vertices[0];
-	Vector3 p1 = triangle.vertices[1];
-	Vector3 p2 = triangle.vertices[2];
-
-	Vector3 edge1 = VectorSubtract(p1, p0);
-	Vector3 edge2 = VectorSubtract(p2, p0);
-
-	Vector3 dir = segment.diff;
-	Vector3 orig = segment.origin;
-
-	Vector3 h = Cross(dir, edge2);
-	float a = Dot(edge1, h);
-	if (std::abs(a) < EPSILON) {
-		segment.color = 0xFFFFFFFF; // 白にリセット
-		return false; // 平行なので衝突しない
-	}
-
-	float f = 1.0f / a;
-	Vector3 s = VectorSubtract(orig, p0);
-	float u = f * Dot(s, h);
-	if (u < 0.0f || u > 1.0f) {
-		segment.color = 0xFFFFFFFF; // 白にリセット
-		return false;
-	}
-
-	Vector3 q = Cross(s, edge1);
-	float v = f * Dot(dir, q);
-	if (v < 0.0f || u + v > 1.0f) {
-		segment.color = 0xFFFFFFFF; // 白にリセット
-		return false;
-	}
-
-	float t = f * Dot(edge2, q);
-	if (t < 0.0f || t > 1.0f) {
-		segment.color = 0xFFFFFFFF; // 白にリセット
-		return false; // 線分の範囲外なら交差しない
-	}
-
-	// 交差しているので色を赤に変更
-	segment.color = 0xFF0000FF;
-	return true; // 交差あり
-}
-
-// AABBの当たり判定
-bool IsCollisionAABB(const AABB& aabb1, const AABB& aabb2) {
-	return (aabb1.min.x <= aabb2.max.x && aabb1.max.x >= aabb2.min.x) && // x軸
-		(aabb1.min.y <= aabb2.max.y && aabb1.max.y >= aabb2.min.y) && // y軸
-		(aabb1.min.z <= aabb2.max.z && aabb1.max.z >= aabb2.min.z);   // z軸
-}
-
-// AABBと球の衝突判定
-bool IsCollisionAABBToSphere(const AABB& aabb, const Sphere& sphere) {
-	
-	// 最近接点を求める
-	Vector3 closestPoint{ std::clamp(sphere.center.x, aabb.min.x, aabb.max.x),
-		std::clamp(sphere.center.y, aabb.min.y, aabb.max.y),
-		std::clamp(sphere.center.z, aabb.min.z, aabb.max.z) };
-
-	// 最近接点と球の中心の距離を計算
-	float distance = Length(VectorSubtract(closestPoint, sphere.center));
-
-	return (distance <= sphere.radius);
-}
 
 // 平面の描画
 void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
